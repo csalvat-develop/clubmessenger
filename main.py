@@ -1,5 +1,5 @@
 """
-ClubMessenger v1.3.0 — Version Android
+ClubMessenger v1.3.3 — Version Android
 Application Flet (Android) — Messagerie ciblée pour club de plongée FFESSM
 Bundle : fr.csdev.clubmessenger
 Auteur  : CS-DEV (Cédric SALVAT)

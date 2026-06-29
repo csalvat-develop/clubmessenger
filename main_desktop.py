@@ -1,5 +1,5 @@
 """
-ClubMessenger Desktop v1.3.0
+ClubMessenger Desktop v1.3.3
 Variante Desktop (PC) de l'application Android ClubMessenger.
 
 Cette version importe toute la logique métier de clubmessenger_core.py
@@ -17,6 +17,7 @@ Lancement : python main_desktop.py
 
 import os
 import re
+import sys
 import json
 import urllib.parse
 import threading
@@ -27,6 +28,19 @@ import flet as ft
 
 # Toute la logique métier (constantes FFESSM, DB, parsing, filtres, SMTP…)
 from clubmessenger_core import *  # noqa: F401,F403
+
+
+def _resource_path(relative_path: str) -> str:
+    """Résout le chemin d'une ressource embarquée.
+    Compatible avec PyInstaller --onefile (les fichiers sont extraits dans
+    un dossier temporaire référencé par sys._MEIPASS).
+    En mode développement (.py lancé directement), utilise le dossier du script.
+    """
+    try:
+        base_path = sys._MEIPASS  # type: ignore[attr-defined]
+    except AttributeError:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 
 class ClubMessengerDesktopApp:
@@ -66,6 +80,13 @@ class ClubMessengerDesktopApp:
                 self.page.window.height     = self.WIN_HEIGHT
                 self.page.window.min_width  = self.WIN_MIN_WIDTH
                 self.page.window.min_height = self.WIN_MIN_HEIGHT
+                # Icône de la fenêtre (barre de titre + barre des tâches Windows)
+                try:
+                    icon_path = _resource_path("assets/ClubMessenger.ico")
+                    if os.path.exists(icon_path):
+                        self.page.window.icon = icon_path
+                except Exception:
+                    pass
                 # window.center() est une coroutine en Flet 0.85, planifier via run_task
                 _win = self.page.window
                 async def _do_center():
@@ -129,6 +150,8 @@ class ClubMessengerDesktopApp:
             extended=True,
             group_alignment=-0.9,  # vers le haut
             on_change=self._on_nav_change,
+            leading=self._build_club_leading(),
+            trailing=self._build_logo_trailing(),
             destinations=[
                 ft.NavigationRailDestination(
                     icon=ft.Icons.PEOPLE, label="Plongeurs"),
@@ -149,6 +172,418 @@ class ClubMessengerDesktopApp:
                 content_wrapper,
             ], expand=True, spacing=0)
         )
+
+    def _build_club_leading(self):
+        """Bouton 'leading' du NavigationRail : affiche le nom court du club
+        configuré et ouvre un popup d'édition. Si le club n'est pas configuré,
+        affiche un placeholder discret invitant à le faire.
+
+        Renvoie une Column contenant deux boutons : identité du club + mode
+        de rédaction (les deux gérés via popups)."""
+        # ── Bouton identité club ──
+        nom_court = (get_param("nom_club_court") or "").strip()
+        label = nom_court if nom_court else "Configurer le club"
+
+        self.lbl_club_leading = ft.Text(
+            label,
+            size=11,
+            text_align=ft.TextAlign.CENTER,
+            color=ft.Colors.BLUE_900 if nom_court else ft.Colors.GREY_600,
+            weight=ft.FontWeight.BOLD if nom_court else ft.FontWeight.NORMAL,
+            max_lines=2,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+
+        btn_club = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.APARTMENT, size=30, color=ft.Colors.BLUE_700),
+                self.lbl_club_leading,
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
+            padding=ft.Padding(left=8, right=8, top=14, bottom=14),
+            margin=ft.Padding(left=8, right=8, top=8, bottom=4),
+            border_radius=8,
+            width=164,
+            alignment=ft.Alignment.CENTER,
+            on_click=lambda _: self._open_club_popup(),
+            ink=True,
+            tooltip="Modifier l'identité du club ou OD",
+            bgcolor=ft.Colors.BLUE_100,
+            border=ft.Border.all(1, ft.Colors.BLUE_300),
+        )
+
+        # ── Bouton mode de rédaction ──
+        mode = get_param("mode_redaction") or "structure"
+        if mode == "commission":
+            commission = (get_param("commission_redaction") or "").strip()
+            label_red = commission if commission else "Commission"
+            color_red = ft.Colors.INDIGO_900 if commission else ft.Colors.GREY_600
+            weight_red = ft.FontWeight.BOLD if commission else ft.FontWeight.NORMAL
+        else:
+            label_red = "Structure"
+            color_red = ft.Colors.INDIGO_900
+            weight_red = ft.FontWeight.BOLD
+
+        self.lbl_redaction_leading = ft.Text(
+            label_red,
+            size=11,
+            text_align=ft.TextAlign.CENTER,
+            color=color_red,
+            weight=weight_red,
+            max_lines=2,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        )
+
+        btn_redaction = ft.Container(
+            content=ft.Column([
+                ft.Icon(ft.Icons.EDIT_NOTE, size=30,
+                        color=ft.Colors.INDIGO_700),
+                self.lbl_redaction_leading,
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=4),
+            padding=ft.Padding(left=8, right=8, top=14, bottom=14),
+            margin=ft.Padding(left=8, right=8, top=4, bottom=8),
+            border_radius=8,
+            width=164,
+            alignment=ft.Alignment.CENTER,
+            on_click=lambda _: self._open_redaction_popup(),
+            ink=True,
+            tooltip="Mode de rédaction (sujet des mails)",
+            bgcolor=ft.Colors.INDIGO_100,
+            border=ft.Border.all(1, ft.Colors.INDIGO_300),
+        )
+
+        return ft.Column([btn_club, btn_redaction], spacing=0, tight=True)
+
+    def _refresh_club_leading(self):
+        """Met à jour le label sous l'icône du leading après modification."""
+        if not hasattr(self, "lbl_club_leading"):
+            return
+        nom_court = (get_param("nom_club_court") or "").strip()
+        self.lbl_club_leading.value = nom_court if nom_court else "Configurer le club"
+        self.lbl_club_leading.color = (ft.Colors.BLUE_900 if nom_court
+                                       else ft.Colors.GREY_600)
+        self.lbl_club_leading.weight = (ft.FontWeight.BOLD if nom_court
+                                        else ft.FontWeight.NORMAL)
+        self._safe_update(self.lbl_club_leading)
+
+    def _build_logo_trailing(self):
+        """Pied de NavigationRail : logo de l'application + version.
+
+        Cherche un fichier image dans plusieurs emplacements/noms candidats.
+        Si aucun n'est trouvé, affiche seulement la version (pas d'erreur).
+        """
+        # Candidats par ordre de préférence (PNG d'abord, ICO en dernier recours)
+        candidates = [
+            "assets/clubmessenger_logo.png",
+            "assets/ClubMessenger.png",
+            "assets/logo.png",
+            "assets/ClubMessenger.ico",
+        ]
+
+        logo_path = None
+        for c in candidates:
+            full = _resource_path(c)
+            if os.path.exists(full):
+                logo_path = full
+                break
+
+        children = []
+        if logo_path:
+            # Wrapper Container avec border_radius + clip_behavior pour
+            # arrondir les coins de l'image (ft.Image n'a pas border_radius
+            # directement).
+            children.append(
+                ft.Container(
+                    content=ft.Image(
+                        src=logo_path,
+                        width=140,
+                        height=140,
+                        fit=ft.BoxFit.CONTAIN,
+                    ),
+                    width=140,
+                    height=140,
+                    border_radius=30,
+                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                )
+            )
+        children.append(
+            ft.Text(f"v{VERSION}",
+                    size=10,
+                    color=ft.Colors.GREY_500,
+                    text_align=ft.TextAlign.CENTER)
+        )
+        # Texte cliquable « À propos » → ouvre le popup
+        children.append(
+            ft.TextButton(
+                "À propos",
+                icon=ft.Icons.INFO_OUTLINE,
+                on_click=lambda _: self._open_about_popup(),
+                style=ft.ButtonStyle(
+                    color=ft.Colors.BLUE_700,
+                    padding=ft.Padding(left=4, right=4, top=2, bottom=2),
+                ),
+            )
+        )
+
+        return ft.Container(
+            content=ft.Column(
+                children,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=4,
+            ),
+            padding=ft.Padding(left=8, right=8, top=12, bottom=16),
+            width=164,
+            alignment=ft.Alignment.CENTER,
+        )
+
+    def _open_about_popup(self):
+        """Popup « À propos » : logo, nom, version, auteur, contact."""
+        # Recherche du logo (mêmes candidats que _build_logo_trailing)
+        candidates = [
+            "assets/clubmessenger_logo.png",
+            "assets/ClubMessenger.png",
+            "assets/logo.png",
+            "assets/ClubMessenger.ico",
+        ]
+        logo_path = None
+        for c in candidates:
+            full = _resource_path(c)
+            if os.path.exists(full):
+                logo_path = full
+                break
+
+        contenu = []
+        if logo_path:
+            contenu.append(
+                ft.Container(
+                    content=ft.Image(
+                        src=logo_path,
+                        width=140,
+                        height=140,
+                        fit=ft.BoxFit.CONTAIN,
+                    ),
+                    width=140,
+                    height=140,
+                    border_radius=30,
+                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                )
+            )
+        contenu += [
+            ft.Text(APP_TITLE, size=22, weight=ft.FontWeight.BOLD,
+                    text_align=ft.TextAlign.CENTER),
+            ft.Text(f"Version {VERSION}", size=14,
+                    color=ft.Colors.GREY_700,
+                    text_align=ft.TextAlign.CENTER),
+            ft.Divider(height=12),
+            ft.Text(
+                "Messagerie ciblée pour clubs de plongée FFESSM.\n"
+                "Envoyez emails et SMS à vos licenciés filtrés "
+                "par expression booléenne (commissions, brevets, "
+                "type de licence, âge, CACI…).",
+                size=12, color=ft.Colors.GREY_800,
+                text_align=ft.TextAlign.CENTER,
+            ),
+            ft.Divider(height=12),
+            ft.Row([
+                ft.Text("Auteur :", size=12, color=ft.Colors.GREY_600, width=80),
+                ft.Text("CS-DEV (Cédric SALVAT)", size=12,
+                        selectable=True, expand=True),
+            ]),
+            ft.Row([
+                ft.Text("Bundle :", size=12, color=ft.Colors.GREY_600, width=80),
+                ft.Text("fr.csdev.clubmessenger", size=12,
+                        selectable=True, expand=True),
+            ]),
+            ft.Row([
+                ft.Text("Licence :", size=12, color=ft.Colors.GREY_600, width=80),
+                ft.Text("Propriétaire — Tous droits réservés",
+                        size=12, selectable=True, expand=True),
+            ]),
+            ft.Container(height=8),
+            ft.Text(
+                "© 2026 — Application 100 % locale, aucune donnée "
+                "transmise au développeur.",
+                size=10, italic=True, color=ft.Colors.GREY_500,
+                text_align=ft.TextAlign.CENTER,
+            ),
+        ]
+
+        def fermer(_):
+            self.page.pop_dialog()
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("À propos", size=16),
+            content=ft.Container(
+                content=ft.Column(
+                    contenu,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    scroll=ft.ScrollMode.AUTO,
+                    spacing=8,
+                    tight=True,
+                ),
+                width=460,
+                height=520,
+            ),
+            actions=[ft.TextButton("Fermer", on_click=fermer)],
+        )
+        self.page.show_dialog(dlg)
+
+    def _refresh_redaction_leading(self):
+        """Met à jour le label du bouton mode de rédaction après modification."""
+        if not hasattr(self, "lbl_redaction_leading"):
+            return
+        mode = get_param("mode_redaction") or "structure"
+        if mode == "commission":
+            commission = (get_param("commission_redaction") or "").strip()
+            if commission:
+                self.lbl_redaction_leading.value = commission
+                self.lbl_redaction_leading.color = ft.Colors.INDIGO_900
+                self.lbl_redaction_leading.weight = ft.FontWeight.BOLD
+            else:
+                self.lbl_redaction_leading.value = "Commission"
+                self.lbl_redaction_leading.color = ft.Colors.GREY_600
+                self.lbl_redaction_leading.weight = ft.FontWeight.NORMAL
+        else:
+            self.lbl_redaction_leading.value = "Structure"
+            self.lbl_redaction_leading.color = ft.Colors.INDIGO_900
+            self.lbl_redaction_leading.weight = ft.FontWeight.BOLD
+        self._safe_update(self.lbl_redaction_leading)
+
+    def _open_club_popup(self):
+        """Popup d'édition de l'identité du club ou OD (nom court + nom long)."""
+        tf_court = ft.TextField(
+            label="Nom court du club ou OD",
+            dense=True,
+            value=get_param("nom_club_court") or "",
+            autofocus=True,
+        )
+        tf_long = ft.TextField(
+            label="Nom complet du club ou OD",
+            dense=True,
+            value=get_param("nom_club_long") or "",
+        )
+
+        def annuler(_):
+            self.page.pop_dialog()
+
+        def sauvegarder(_):
+            set_param("nom_club_court", (tf_court.value or "").strip())
+            set_param("nom_club_long",  (tf_long.value or "").strip())
+            self.page.pop_dialog()
+            self._refresh_club_leading()
+            self._show_snack("Identité du club enregistrée.")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Identité du club ou OD"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=16,
+                                color=ft.Colors.BLUE_600),
+                        ft.Text(
+                            "OD = Organe Déconcentré (comité départemental "
+                            "ou régional).",
+                            size=12, color=ft.Colors.GREY_700,
+                            expand=True, no_wrap=False),
+                    ], spacing=6),
+                    tf_court,
+                    tf_long,
+                ], spacing=14, tight=True),
+                width=500,
+                height=240,
+            ),
+            actions=[
+                ft.TextButton("Annuler", on_click=annuler),
+                ft.FilledButton("Enregistrer", on_click=sauvegarder,
+                                bgcolor=ft.Colors.BLUE_700,
+                                color=ft.Colors.WHITE),
+            ],
+        )
+        self.page.show_dialog(dlg)
+
+    def _open_redaction_popup(self):
+        """Popup d'édition du mode de rédaction : Switch structure/commission
+        + Dropdown des commissions (visible uniquement en mode commission)."""
+        mode_actuel = get_param("mode_redaction") or "structure"
+        commission_actuelle = get_param("commission_redaction") or ""
+
+        # Dropdown : commissions FFESSM + activités transversales
+        all_options = (
+            [ft.DropdownOption(text=nom) for nom, _ in COMMISSIONS_FFESSM]
+            + [ft.DropdownOption(key="_separator_",
+                                 text="─" * 24, disabled=True)]
+            + [ft.DropdownOption(text=nom) for nom, _ in FILTRES_TRANSVERSAUX]
+        )
+        dd_commission = ft.Dropdown(
+            label="Commission ou activité transversale",
+            dense=True,
+            options=all_options,
+            value=commission_actuelle if commission_actuelle else None,
+            visible=(mode_actuel == "commission"),
+        )
+
+        lbl_switch_mode = ft.Text(
+            "Écrire en tant que commission" if mode_actuel == "commission"
+            else "Écrire en tant que structure",
+            size=13, weight=ft.FontWeight.BOLD, expand=True,
+        )
+
+        def on_switch_change(e):
+            is_com = bool(e.control.value)
+            lbl_switch_mode.value = ("Écrire en tant que commission" if is_com
+                                     else "Écrire en tant que structure")
+            dd_commission.visible = is_com
+            self._safe_update(lbl_switch_mode)
+            self._safe_update(dd_commission)
+
+        switch_mode = ft.Switch(
+            value=(mode_actuel == "commission"),
+            on_change=on_switch_change,
+            active_color=ft.Colors.INDIGO_700,
+        )
+
+        def annuler(_):
+            self.page.pop_dialog()
+
+        def sauvegarder(_):
+            mode = "commission" if switch_mode.value else "structure"
+            set_param("mode_redaction", mode)
+            if mode == "commission":
+                set_param("commission_redaction", dd_commission.value or "")
+            else:
+                set_param("commission_redaction", "")
+            self.page.pop_dialog()
+            self._refresh_redaction_leading()
+            self._show_snack("Mode de rédaction enregistré.")
+
+        dlg = ft.AlertDialog(
+            title=ft.Text("Mode de rédaction"),
+            content=ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.INFO_OUTLINE, size=16,
+                                color=ft.Colors.BLUE_600),
+                        ft.Text(
+                            "Détermine la formulation des sujets de mails. "
+                            "« Structure » utilise le nom court du club/OD. "
+                            "« Commission » ajoute la commission choisie.",
+                            size=12, color=ft.Colors.GREY_700,
+                            expand=True, no_wrap=False),
+                    ], spacing=6),
+                    ft.Row([lbl_switch_mode, switch_mode],
+                           vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    dd_commission,
+                ], spacing=14, tight=True),
+                width=500,
+                height=260,
+            ),
+            actions=[
+                ft.TextButton("Annuler", on_click=annuler),
+                ft.FilledButton("Enregistrer", on_click=sauvegarder,
+                                bgcolor=ft.Colors.INDIGO_700,
+                                color=ft.Colors.WHITE),
+            ],
+        )
+        self.page.show_dialog(dlg)
 
     def _on_nav_change(self, e):
         idx = self.nav_rail.selected_index
@@ -239,6 +674,35 @@ class ClubMessengerDesktopApp:
                     border_radius=8,
                 ),
                 ft.Container(height=8),
+                # En-tête de tableau (mêmes largeurs que les lignes ci-dessous)
+                ft.Container(
+                    content=ft.Row([
+                        ft.Text("Nom Prénom", size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREY_700, expand=2),
+                        ft.Text("Niveau", size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREY_700, width=180),
+                        ft.Text("Saison", size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREY_700, width=110),
+                        ft.Text("Club", size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREY_700, expand=2),
+                        ft.Container(
+                            content=ft.Text("CACI", size=11,
+                                            weight=ft.FontWeight.BOLD,
+                                            color=ft.Colors.GREY_700,
+                                            text_align=ft.TextAlign.CENTER),
+                            width=80,
+                            alignment=ft.Alignment.CENTER,
+                        ),
+                    ], spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    padding=ft.Padding(left=14, right=14, top=8, bottom=8),
+                    bgcolor=ft.Colors.GREY_200,
+                    border_radius=8,
+                ),
+                ft.Container(height=4),
                 # Liste
                 ft.Container(
                     content=self.liste_plongeurs_col,
@@ -252,32 +716,67 @@ class ClubMessengerDesktopApp:
         )
 
     def _build_carte_plongeur(self, p: dict) -> ft.Control:
+        """Carte plongeur en LIGNE UNIQUE (style tableau) — version desktop.
+        Colonnes : Nom (+ âge si mineur)  |  Niveau (+ prépa)  |  Saison  |  Club  |  Statut CACI
+        """
         statut_caci, coul_caci = calcul_statut_caci(p.get("date_fin_caci", ""))
         age = calcul_age(p.get("date_naissance", ""))
-        age_str = f"  •  {age} ans" if (age is not None and age < 18) else ""
+        age_suffix = f"  ({age} ans)" if (age is not None and age < 18) else ""
         niveau_str = niveau_affiche(p.get("niveau", ""), p.get("brev_nitrox", ""))
+        prepa = (p.get("niveau_prepa", "") or "").strip()
+        niveau_full = f"{niveau_str} → {prepa}" if prepa else niveau_str
 
-        prepa = p.get("niveau_prepa", "")
-        subtitle_parts = [niveau_str + age_str]
-        if prepa:
-            subtitle_parts.append(f"→ {prepa}")
-        subtitle = "   ·   ".join(subtitle_parts)
+        saison   = (p.get("saison", "")   or "").strip() or "—"
+        nom_club = (p.get("nom_club", "") or "").strip() or "—"
 
         statut_chip = ft.Container(
-            content=ft.Text(statut_caci, size=11, color=ft.Colors.WHITE),
+            content=ft.Text(statut_caci, size=11, color=ft.Colors.WHITE,
+                            text_align=ft.TextAlign.CENTER),
             bgcolor=coul_caci,
             border_radius=4,
             padding=ft.Padding(left=8, right=8, top=3, bottom=3),
+            width=80,
+            alignment=ft.Alignment.CENTER,
         )
 
-        return ft.ListTile(
-            title=ft.Text(f"{p['nom']} {p['prenom']}",
-                          weight=ft.FontWeight.BOLD, size=15),
-            subtitle=ft.Text(subtitle, size=13, color=ft.Colors.GREY_700),
-            trailing=statut_chip,
-            on_click=lambda _, plongeur=p: self._show_fiche_plongeur(plongeur),
-            dense=False,
+        return ft.Container(
+            content=ft.Row([
+                # Nom Prénom (+ âge si mineur)
+                ft.Text(
+                    f"{p['nom']} {p['prenom']}{age_suffix}",
+                    weight=ft.FontWeight.BOLD, size=14,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                    expand=2,
+                ),
+                # Niveau (+ prépa éventuelle)
+                ft.Text(
+                    niveau_full,
+                    size=13, color=ft.Colors.GREY_800,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                    width=180,
+                ),
+                # Saison
+                ft.Text(
+                    saison,
+                    size=12, color=ft.Colors.GREY_600,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                    width=110,
+                ),
+                # Club
+                ft.Text(
+                    nom_club,
+                    size=12, color=ft.Colors.GREY_600,
+                    no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS,
+                    expand=2,
+                ),
+                # Statut CACI
+                statut_chip,
+            ], spacing=14, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=ft.Padding(left=14, right=14, top=10, bottom=10),
             bgcolor=ft.Colors.WHITE,
+            border_radius=4,
+            on_click=lambda _, plongeur=p: self._show_fiche_plongeur(plongeur),
+            ink=True,
         )
 
     def _refresh_liste_plongeurs(self, query=""):
@@ -1481,9 +1980,10 @@ class ClubMessengerDesktopApp:
     # ──────────────────────────────────────────────────────────────────────
 
     def _build_tab_parametres(self):
+        # Note : nom_club_court et nom_club_long ne sont PLUS dans cet onglet
+        # mais accessibles via le bouton "Identité du club" en haut du
+        # NavigationRail (cf. _build_club_leading + _open_club_popup).
         params_fields = {
-            "nom_club_court":  ft.TextField(label="Nom court du club ou OD",   dense=True),
-            "nom_club_long":   ft.TextField(label="Nom complet du club ou OD", dense=True),
             "email_expediteur":ft.TextField(label="Email expéditeur", dense=True,
                                            keyboard_type=ft.KeyboardType.EMAIL),
             "smtp_host":       ft.TextField(label="Serveur SMTP (host)", dense=True),
@@ -1495,54 +1995,9 @@ class ClubMessengerDesktopApp:
         }
         self.params_fields = params_fields
 
-        mode_actuel = get_param("mode_redaction") or "structure"
-        commission_actuelle = get_param("commission_redaction") or ""
-
-        _all_dropdown_options = (
-            [ft.DropdownOption(text=nom) for nom, _ in COMMISSIONS_FFESSM]
-            + [ft.DropdownOption(key="_separator_", text="─" * 24, disabled=True)]
-            + [ft.DropdownOption(text=nom) for nom, _ in FILTRES_TRANSVERSAUX]
-        )
-        dd_commission = ft.Dropdown(
-            label="Commission ou activité transversale",
-            dense=True,
-            options=_all_dropdown_options,
-            value=commission_actuelle if commission_actuelle else None,
-            visible=(mode_actuel == "commission"),
-        )
-
-        lbl_switch_mode = ft.Text(
-            "Écrire en tant que commission" if mode_actuel == "commission"
-            else "Écrire en tant que structure",
-            size=13, weight=ft.FontWeight.BOLD, expand=True,
-        )
-
-        def on_switch_change(e):
-            mode = "commission" if e.control.value else "structure"
-            lbl_switch_mode.value = ("Écrire en tant que commission"
-                                     if mode == "commission"
-                                     else "Écrire en tant que structure")
-            dd_commission.visible = (mode == "commission")
-            self._safe_update(lbl_switch_mode)
-            self._safe_update(dd_commission)
-
-        switch_mode = ft.Switch(
-            value=(mode_actuel == "commission"),
-            on_change=on_switch_change,
-            active_color=ft.Colors.BLUE_700,
-        )
-
-        self.switch_mode_redaction = switch_mode
-        self.dd_commission_redaction = dd_commission
-        self.lbl_switch_mode = lbl_switch_mode
-
         def sauvegarder(_):
             for cle, tf in params_fields.items():
                 set_param(cle, tf.value.strip())
-            mode = "commission" if switch_mode.value else "structure"
-            set_param("mode_redaction", mode)
-            set_param("commission_redaction",
-                      dd_commission.value or "" if mode == "commission" else "")
             self._show_snack("Paramètres sauvegardés.")
 
         return ft.Container(
@@ -1554,42 +2009,6 @@ class ClubMessengerDesktopApp:
                 ft.Container(height=8),
                 ft.Container(
                     content=ft.Column([
-                        ft.Card(content=ft.Container(
-                            content=ft.Column([
-                                ft.Text("Club ou OD", weight=ft.FontWeight.BOLD,
-                                        size=14),
-                                ft.Row([
-                                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16,
-                                            color=ft.Colors.BLUE_600),
-                                    ft.Text(
-                                        "OD = Organe Déconcentré (comité "
-                                        "départemental ou régional).",
-                                        size=12, color=ft.Colors.GREY_700,
-                                        expand=True, no_wrap=False),
-                                ], spacing=6),
-                                params_fields["nom_club_court"],
-                                params_fields["nom_club_long"],
-                            ], spacing=10),
-                            padding=16, expand=True)),
-                        ft.Card(content=ft.Container(
-                            content=ft.Column([
-                                ft.Text("Mode de rédaction",
-                                        weight=ft.FontWeight.BOLD, size=14),
-                                ft.Row([
-                                    ft.Icon(ft.Icons.INFO_OUTLINE, size=16,
-                                            color=ft.Colors.BLUE_600),
-                                    ft.Text(
-                                        "Détermine la formulation des sujets de mails. "
-                                        "« Structure » utilise le nom court du club/OD. "
-                                        "« Commission » ajoute la commission choisie.",
-                                        size=12, color=ft.Colors.GREY_700,
-                                        expand=True, no_wrap=False),
-                                ], spacing=6),
-                                ft.Row([lbl_switch_mode, switch_mode],
-                                       vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                                dd_commission,
-                            ], spacing=10),
-                            padding=16, expand=True)),
                         ft.Card(content=ft.Container(
                             content=ft.Column([
                                 ft.Text("Email — SMTP", weight=ft.FontWeight.BOLD,
@@ -1677,18 +2096,11 @@ class ClubMessengerDesktopApp:
         for cle, tf in self.params_fields.items():
             tf.value = get_param(cle)
             self._safe_update(tf)
-        if hasattr(self, "switch_mode_redaction"):
-            mode = get_param("mode_redaction") or "structure"
-            is_commission = (mode == "commission")
-            self.switch_mode_redaction.value = is_commission
-            self.lbl_switch_mode.value = ("Écrire en tant que commission"
-                                          if is_commission
-                                          else "Écrire en tant que structure")
-            self.dd_commission_redaction.value = get_param("commission_redaction") or None
-            self.dd_commission_redaction.visible = is_commission
-            self._safe_update(self.switch_mode_redaction)
-            self._safe_update(self.lbl_switch_mode)
-            self._safe_update(self.dd_commission_redaction)
+        # Identité du club et mode de rédaction sont gérés via les boutons
+        # du NavigationRail (popups), pas dans cet onglet. Mais on rafraîchit
+        # les labels du NavRail au cas où d'autres écrans les auraient modifiés.
+        self._refresh_club_leading()
+        self._refresh_redaction_leading()
 
     # ──────────────────────────────────────────────────────────────────────
     # Chargement données & helpers

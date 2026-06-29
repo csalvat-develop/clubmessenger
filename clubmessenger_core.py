@@ -36,7 +36,7 @@ import xml.etree.ElementTree as ET
 # ──────────────────────────────────────────────────────────────────────────────
 # Constantes
 # ──────────────────────────────────────────────────────────────────────────────
-VERSION = "1.3.0"
+VERSION = "1.3.3"
 APP_TITLE = "ClubMessenger"
 DB_NAME = "club_messenger.db"
 
@@ -147,7 +147,7 @@ SIMPLIFICATIONS_TOUS_BREVETS = {
     "RIFA Apnée": "RIFAA",
     "RIFA Nage en eau vive": "RIFANEV",
     "RIFA Nage avec palmes": "RIFAPNAP",
-    "RIFA Tir sur cible": "RIFATSC",
+    "RIFA Tir sur cible": "RIFAT",
     "RIFA Pêche Sous-Marine": "RIFAPSM",
     "RIFA Hockey Subaquatique": "RIFAHS",
     "Initiateur entraîneur Nage avec palmes": "IE1NAP",
@@ -191,6 +191,17 @@ SIMPLIFICATIONS_TOUS_BREVETS = {
     "Pass animateur Nage en eau vive": "PA NEV",
     "Initiateur entraîneur Hockey Subaquatique": "IE1 HS",
     "Arbitre Hockey Subaquatique 1er degré": "Arb. HS",
+    "Dauphin - Apnée jeunes N3": "Dauphin",
+    "Poulpe - Apnée jeunes N2": "Poulpe",
+    "Crevette - Apnée jeunes N1": "Crevette",
+    "Cursus jeune": "Jeune PB",
+    "AFH PSP - Assistant formateur": "AFH PSP",
+    "AFH Scaphandre - Assistant formateur": "AFH S",
+    "AFH TSC - Assistant formateur": "AFH TSC",
+    "AH - Aidant accompagnant": "AH",
+    "APH PSP - Accompagnant pratiquant": "APH PSP",
+    "APH Scaphandre - Accompagnant pratiquant": "APH S",
+    "APH TSC - Accompagnant pratiquant": "APH TSC",
 }
 
 
@@ -283,6 +294,7 @@ BREVETS_BIO = [
     "Formateur Biologie 1er degré – Aptitude Formateur PB2",
     "Formateur Biologie 2e degré",
     "Formateur Biologie 3e degré",
+    "Cursus jeune",
 ]
 
 BREVETS_PS = [
@@ -305,6 +317,9 @@ BREVETS_APNEE = [
     "Initiateur-Entraîneur Apnée N2 / 1* Star Freediving Instructor",
     "Moniteur entraîneur Fédéral Apnée 1er degré",
     "Moniteur entraîneur Fédéral Apnée 2e degré",
+    "Dauphin - Apnée jeunes N3",
+    "Poulpe - Apnée jeunes N2",
+    "Crevette - Apnée jeunes N1",
 ]
 
 BREVETS_PSP = [
@@ -371,12 +386,23 @@ BREVETS_HANDI = [
     "Moniteur Fédéral E.H.1 Scaphandre",
     "Moniteur Fédéral E.H.2 Scaphandre",
     "MEFEH - Tir sur cible",
+    "AFH PSP - Assistant formateur",
+    "AFH Scaphandre - Assistant formateur",
+    "AFH TSC - Assistant formateur",
+    "AH - Aidant accompagnant",
+    "APH PSP - Accompagnant pratiquant",
+    "APH Scaphandre - Accompagnant pratiquant",
+    "APH TSC - Accompagnant pratiquant",
 ]
 
 BREVETS_JEUNES = [
     "Plongeur Or",
     "Plongeur Argent",
     "Plongeur Bronze",
+    "Dauphin - Apnée jeunes N3",
+    "Poulpe - Apnée jeunes N2",
+    "Crevette - Apnée jeunes N1",
+    "Cursus jeune",
 ]
 
 BREVETS_CADRES = [

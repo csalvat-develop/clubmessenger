@@ -66,14 +66,6 @@ flet build apk
 
 Sortie : `build/apk/app-release.apk` → copier sur le téléphone, ouvrir pour installer.
 
-### AAB (Android App Bundle pour Google Play Store)
-
-```bash
-flet build aab
-```
-
-Sortie : `build/aab/app-release.aab` → à uploader sur la Play Console.
-
 
 ## Licence
 
