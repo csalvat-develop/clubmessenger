@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec — ClubMessenger Desktop v1.3.0
+PyInstaller spec — ClubMessenger Desktop v1.3.3
 
 Compilation :
     pyinstaller build_desktop.spec
@@ -45,7 +45,7 @@ datas += [("assets/ClubMessenger.ico", "assets")]
 # ── Analyse ──────────────────────────────────────────────────────────────
 a = Analysis(
     ["main_desktop.py"],
-    pathex=[],
+    pathex=["."],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
